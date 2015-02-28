@@ -1,5 +1,5 @@
 /**
- * Created by marcinoc on 2015-01-24.
+ * Learning implicits with Scalaz Presentation https://vimeo.com/10482466
  */
 
 trait Monoid[A]{

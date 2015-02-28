@@ -127,8 +127,12 @@ sealed trait Stream[+A] {
 
   def hasSubsequence[A](s: Stream[A]): Boolean = tails exists( _ startsWith s)
 
-  def scanRight[AA >: A, B] (f: (AA, B) => AA) : Stream[Stream[B]] = foldRight(Stream(empty[B])) ((a,b) => cons(cons(a,b), b))
-
+  def scanRight[B](z: B) (f: (A, B) => B) : Stream[B] =
+    foldRight((z, Stream(z)))((a, bs) => {
+      lazy val (b, s) = bs
+      val b2 = f(a, b)
+      (b2, cons(b2, s))
+    })._2
 }
 
 case object Empty extends Stream[Nothing]

@@ -1,5 +1,5 @@
-import Either._
-
+import com.oczeretko.option._
+import com.oczeretko.option.Either._
 
 object HelloWorld {
 

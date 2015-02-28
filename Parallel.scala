@@ -4,10 +4,6 @@ import java.util.concurrent.{Callable, TimeUnit, Future, ExecutorService}
 
 import Parallel.Parallel.Par
 
-/**
- * Created by marcinoc on 2015-01-18.
- */
-
 package Parallel{
   package object Parallel {
     type Par[A] = ExecutorService => Future[A]

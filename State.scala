@@ -1,10 +1,5 @@
 package com.oczeretko
 
-
-/**
- * Created by marcinoc on 2015-01-10.
- */
-
 //type State[S, +A] = S => (A, S)
 
 case class State[S, +A](run: S => (A,S)) {
