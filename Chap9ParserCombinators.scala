@@ -22,7 +22,7 @@ trait Parsers[Parser[+_]] {
       char('-').? **
       digit.+ **
       (
-        (char(',') | char('.')) **
+        (char('.')) **
         digit.+
       ).?
     ).slice map (_.toDouble)
@@ -60,16 +60,16 @@ trait Parsers[Parser[+_]] {
 
   def trim[A](p: Parser[A]): Parser[A] =
     whitespace.* *--
-      p **
-      whitespace.* *--
+    p **
+    whitespace.* *--
 
   def separated[A, B](sep: Parser[A], pb: Parser[B]): Parser[List[B]] =
     ((
       pb **
-        sep *--
-      ).* **
-      pb map { case (lb, b) => lb ++ List(b)}) |
-      succeed(List.empty[B]) scope ("Expected separated list of values")
+      sep *--
+     ).* **
+     pb map { case (lb, b) => lb ++ List(b)}) |
+       succeed(List.empty[B]) scope ("Expected separated list of values")
 
   def ignoreFirst[A, B](p1: Parser[A], p2: Parser[B]): Parser[B] = p1 ** p2 map (_._2)
 
@@ -120,13 +120,13 @@ trait Parsers[Parser[+_]] {
 
   implicit def toParser(r: Regex) = regex(r)
 
+  /* Operators */
   case class BiParserOps[A, B](p: Parser[(A, B)]) {
     def *-- : Parser[A] = p.map(_._1)
 
     def *--[C](p2: Parser[C]): Parser[(A, C)] = p ** p2 map { case ((a, b), c) => (a, c)}
   }
 
-  /* Operators */
   case class ParserOps[A](p: Parser[A]) {
     def |[B >: A](p2: => Parser[B]): Parser[B] = self.or(p, p2)
 
@@ -182,7 +182,26 @@ trait Parsers[Parser[+_]] {
         run(p)(input) match {
           case Right(JSON.JSString(input)) => true
           case Right(_) => throw new Exception("Expected JSString")
-          case Left(pe) => throw new Exception(pe.stack.toString())
+          case Left(pe) => throw new Exception(pe.toString())
+        }
+      })
+    }
+
+    def testValidJsonArray (p : Parser[JSON]) : Prop = {
+      val testJson = "[1,2,null,  [1], true]"
+      Prop.check({
+        val result = run(p)(testJson)
+        result match {
+          case Right(
+            JSON.JSArray(Vector(
+              JSON.JSNumber(1.0),
+              JSON.JSNumber(2.0),
+              JSON.JSNull,
+              JSON.JSArray(Vector(
+                JSON.JSNumber(1.0))),
+              JSON.JSBool(true)))) => true
+          case Right(_) => false
+          case Left(pe) => throw new Exception(pe.toString())
         }
       })
     }
@@ -197,10 +216,11 @@ trait Parsers[Parser[+_]] {
               map.get("Age").get.asInstanceOf[JSON.JSNumber].get == 15 &&
               map.get("Items").get.asInstanceOf[JSON.JSArray].get.head.asInstanceOf[JSON.JSNumber].get == 11
           case Right(_) => throw new Exception("Expected JSObject")
-          case Left(pe) => throw new Exception(pe.stack.toString())
+          case Left(pe) => throw new Exception(pe.toString())
         }
       })
     }
+
   }
 }
 
@@ -334,13 +354,15 @@ object ParserMain {
   def main(): Unit = {
     import MyParser._
 
-    val jsonParser = Parsers.jsstring(MyParsers)
+    val jsonParser = Parsers.jsonParser(MyParsers)
     Console.println("mapLaw")
     Prop.run(MyParsers.Laws.mapLaw(jsonParser)(SGen.string))
     Console.println("double")
     Prop.run(MyParsers.Laws.testDouble)
     Console.println("jsstring")
     Prop.run(MyParsers.Laws.testValidJsonString(jsonParser))
+    Console.println("jsarray")
+    Prop.run(MyParsers.Laws.testValidJsonArray(jsonParser))
     Console.println("json")
     Prop.run(MyParsers.Laws.testValidJson(jsonParser))
   }
