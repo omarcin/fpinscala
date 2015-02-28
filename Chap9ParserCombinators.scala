@@ -207,14 +207,15 @@ trait Parsers[Parser[+_]] {
     }
 
     def testValidJson (p: Parser[JSON]): Prop = {
-      val testJson = "  { 'Name' = 'Marcin', 'Age'=15, Items=[11,2,3] } "
+      val testJson = "  { 'Name' = 'Marcin', 'Age'=15, \"Items\"=[-11.01,'2',3, true,  null, []], 'x'='..\"..' } "
       Prop.check({
         val result = run(p)(testJson)
         result match {
           case Right(JSON.JSObject(map)) =>
             map.get("Name").get.asInstanceOf[JSON.JSString].get == "Marcin" &&
               map.get("Age").get.asInstanceOf[JSON.JSNumber].get == 15 &&
-              map.get("Items").get.asInstanceOf[JSON.JSArray].get.head.asInstanceOf[JSON.JSNumber].get == 11
+              map.get("Items").get.asInstanceOf[JSON.JSArray].get.head.asInstanceOf[JSON.JSNumber].get == -11.01 &&
+              map.get("x").get.asInstanceOf[JSON.JSString].get == "..\".."
           case Right(_) => throw new Exception("Expected JSObject")
           case Left(pe) => throw new Exception(pe.toString())
         }
@@ -352,7 +353,6 @@ object MyParsers extends Parsers[MyParser] {
 
 object ParserMain {
   def main(): Unit = {
-    import MyParser._
 
     val jsonParser = Parsers.jsonParser(MyParsers)
     Console.println("mapLaw")
