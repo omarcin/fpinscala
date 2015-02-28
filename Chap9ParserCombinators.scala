@@ -17,10 +17,15 @@ trait Parsers[Parser[+_]] {
   def regex(r: Regex): Parser[String]
 
   val whitespace = regex("\\s".r).label("Expected whitespace character")
-  val double: Parser[Double] = for {
-    sign <- char('-').as(-1) | succeed(1)
-    digits <- digit.many1.slice.map(_.toDouble)
-  } yield sign * digits
+  val double: Parser[Double] =
+    (
+      char('-').? **
+      digit.+ **
+      (
+        (char(',') | char('.')) **
+        digit.+
+      ).?
+    ).slice map (_.toDouble)
 
   val digit = regex("\\d".r).label("Expected digit")
 
@@ -47,20 +52,22 @@ trait Parsers[Parser[+_]] {
     if (n <= 0) succeed(List.empty[A])
     else map2(p, listOf(n - 1, p))(_ :: _)
 
+  def maybe[A](p: Parser[A]) : Parser[Option[A]] = p.map(Some(_)) | succeed(None)
+
   def many[A](p: Parser[A]): Parser[List[A]] = map2(p, many(p))(_ :: _) | succeed(List.empty[A])
 
   def many1[A](p: Parser[A]): Parser[List[A]] = map2(p, many(p))(_ :: _)
 
   def trim[A](p: Parser[A]): Parser[A] =
-    whitespace.many *--
+    whitespace.* *--
       p **
-      whitespace.many *--
+      whitespace.* *--
 
   def separated[A, B](sep: Parser[A], pb: Parser[B]): Parser[List[B]] =
     ((
       pb **
         sep *--
-      ).many **
+      ).* **
       pb map { case (lb, b) => lb ++ List(b)}) |
       succeed(List.empty[B]) scope ("Expected separated list of values")
 
@@ -137,9 +144,14 @@ trait Parsers[Parser[+_]] {
 
     def map2[B, C](pb: => Parser[B])(f: (A, B) => C): Parser[C] = self.map2(p, pb)(f)
 
+    def maybe: Parser[Option[A]] = self.maybe(p)
+    def ? : Parser[Option[A]] = self.maybe(p)
+
     def many: Parser[List[A]] = self.many(p)
+    def * : Parser[List[A]] = self.many(p)
 
     def many1: Parser[List[A]] = self.many1(p)
+    def + : Parser[List[A]] = self.many1(p)
 
     def flatMap[B](f: A => Parser[B]): Parser[B] = self.flatMap(p)(f)
 
@@ -157,6 +169,13 @@ trait Parsers[Parser[+_]] {
 
     def mapLaw[A](p: Parser[A])(in: SGen[String]): Prop =
       equal(p.map(a => a), p)(in)
+
+    def testDouble : Prop = {
+      Prop.forAll(SGen.double)(input => run(self.double)(input.toString) match {
+        case Right(num) => num == input
+        case _ => false
+      })
+    }
 
     def testValidJsonString (p: Parser[JSON]) : Prop = {
       Prop.forAll(SGen.string.map("'" + _ + "'"))(input => {
@@ -215,7 +234,7 @@ object Parsers {
     import P._
     for {
       p <- char('\'') | char('"')
-      str <- exceptChar(p).many.slice
+      str <- exceptChar(p).*.slice
       _ <- char(p)
     } yield JSString(str)
   }
@@ -274,14 +293,15 @@ object MyParsers extends Parsers[MyParser] {
     if (input.startsWith(s))
       Right(s, input.slice(s.length, input.length))
     else
-      Left(ParseError(List(("Expected " + s, Location(input, 0)))))
+      Left(ParseError(List.empty))
   }).label("Expected " + s)
 
   override def scope[A](p: MyParser[A])(msg: String): MyParser[A] = p
 
   override def regex(r: Regex): MyParser[String] = MyParser(input =>
-    r.findPrefixMatchOf(input).map(m => Right(m.matched, input.slice(m.end, input.length)))
-      .getOrElse(Left(ParseError(List(("Expected " + r, Location(input, 0))))))
+    r.findPrefixMatchOf(input)
+     .map(m => Right(m.matched, input.slice(m.end, input.length)))
+     .getOrElse(Left(ParseError(List.empty)))
   ) label("Regex " + r)
 
   override def slice[A](p: MyParser[A]): MyParser[String] = MyParser(input => {
@@ -315,8 +335,13 @@ object ParserMain {
     import MyParser._
 
     val jsonParser = Parsers.jsstring(MyParsers)
+    Console.println("mapLaw")
     Prop.run(MyParsers.Laws.mapLaw(jsonParser)(SGen.string))
+    Console.println("double")
+    Prop.run(MyParsers.Laws.testDouble)
+    Console.println("jsstring")
     Prop.run(MyParsers.Laws.testValidJsonString(jsonParser))
+    Console.println("json")
     Prop.run(MyParsers.Laws.testValidJson(jsonParser))
   }
 }

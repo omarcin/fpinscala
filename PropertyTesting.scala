@@ -21,6 +21,7 @@ object SGen {
   def listOf1[A](g : Gen[A]) : SGen[List[A]] = SGen(size => g.listOfN(if(size==0) 1 else size))
   def unit[A](a : A) : SGen[A] = Gen.unit(a).unsized
   def string : SGen[String] = SGen(Gen.stringOfLen)
+  def double : SGen[Double] = SGen(size => Gen.union(Gen.double.map(_ * size), Gen.double.map(_ * -size)))
 }
 
 case class Gen[+A](sample: State[RNG, A]) {
@@ -58,6 +59,9 @@ object Gen {
 
   def boolean : Gen[Boolean] =
     Gen(RNG.nonNegativeLessThan(2).map(_ == 0))
+
+  def double : Gen[Double] =
+    Gen(RNG.double)
 
   def union[A] (g1 : Gen[A], g2 : Gen[A]) : Gen[A] =
     boolean.flatMap(if (_) g1 else g2)

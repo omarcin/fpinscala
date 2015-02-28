@@ -33,21 +33,16 @@ object RNG {
       else
         nonNegativeLessThan(n)
     })
-
 }
 
-
-
-//
-//
-////  def ints (count: Int) (rng : RNG) : (List[Int], RNG) = {
-////    if (count <= 0) (List.empty[Int], rng)
-////    else {
-////      val (ns, r) = ints (count - 1)(rng)
-////      val (n, r1) = r.nextInt
-////      (n :: ns, r1)
-////    }
-////  }
+//  def ints (count: Int) (rng : RNG) : (List[Int], RNG) = {
+//    if (count <= 0) (List.empty[Int], rng)
+//    else {
+//      val (ns, r) = ints (count - 1)(rng)
+//      val (n, r1) = r.nextInt
+//      (n :: ns, r1)
+//    }
+//  }
 //
 //  def ints2(count: Int)(rng : RNG) : (List[Int], RNG)  = {
 //    @tailrec
