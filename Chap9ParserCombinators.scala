@@ -2,146 +2,187 @@ package com.oczeretko
 
 import scala.util.matching.Regex
 
-trait Parsers[Parser[+_]] { self =>
+trait Parsers[Parser[+_]] {
+  self =>
 
   /* Types */
   case class ParseError(stack: List[(String, Location)])
 
   /* execution */
-  def run[A](p : Parser[A])(text : String) : Either[ParseError, A]
+  def run[A](p: Parser[A])(text: String): Either[ParseError, A]
 
   /* ctors */
-  def string(s : String) : Parser[String]
-  def regex(r : Regex) : Parser[String]
+  def string(s: String): Parser[String]
+
+  def regex(r: Regex): Parser[String]
+
   val whitespace = regex("\\s".r).label("Expected whitespace character")
-  val double : Parser[Double] = for {
-      sign <- char('-').as(-1) | succeed(1)
-      digits <- digit.many1.slice.map(_.toDouble)
-    } yield sign * digits
+  val double: Parser[Double] = for {
+    sign <- char('-').as(-1) | succeed(1)
+    digits <- digit.many1.slice.map(_.toDouble)
+  } yield sign * digits
 
   val digit = regex("\\d".r).label("Expected digit")
 
-  def char(a : Char) : Parser[Char] = string(a.toString).map(_.charAt(0)).label("Expected " + a)
-  def succeed[A](a : A) : Parser[A]
+  def char(a: Char): Parser[Char] = string(a.toString).map(_.charAt(0))
+
+  def succeed[A](a: A): Parser[A]
+
+  def exceptChar(a: Char): Parser[Char] = regex(("[^" + a + "]").r).map(_.charAt(0))
 
   /* operators */
-  def as[A,B](p : Parser[A], b : B) : Parser[B] = p.map(_ => b)
-  def or[A](left : Parser[A], right : => Parser[A]) : Parser[A]
-  def product[A,B](p1 : Parser[A], p2 : => Parser[B]) : Parser[(A,B)] =
+  def as[A, B](p: Parser[A], b: B): Parser[B] = p.map(_ => b)
+
+  def or[A](left: Parser[A], right: => Parser[A]): Parser[A]
+
+  def product[A, B](p1: Parser[A], p2: => Parser[B]): Parser[(A, B)] =
     for {
       a <- p1
       b <- p2
-    } yield (a,b)
+    } yield (a, b)
 
-  def attempt[A] (p : Parser[A]) : Parser[A]
+  def attempt[A](p: Parser[A]): Parser[A]
 
-  def listOf[A](n: Int, p : Parser[A]) : Parser[List[A]] =
+  def listOf[A](n: Int, p: Parser[A]): Parser[List[A]] =
     if (n <= 0) succeed(List.empty[A])
-    else map2(p, listOf(n-1, p))(_ :: _)
+    else map2(p, listOf(n - 1, p))(_ :: _)
 
-  def many[A](p : Parser[A]) : Parser[List[A]] = map2(p, many(p))(_ :: _) | succeed(List.empty[A])
-  def many1[A](p : Parser[A]) : Parser[List[A]] = map2(p, many(p))(_ :: _)
+  def many[A](p: Parser[A]): Parser[List[A]] = map2(p, many(p))(_ :: _) | succeed(List.empty[A])
 
-  def trim[A](p : Parser[A]) : Parser[A] =
+  def many1[A](p: Parser[A]): Parser[List[A]] = map2(p, many(p))(_ :: _)
+
+  def trim[A](p: Parser[A]): Parser[A] =
     whitespace.many *--
-    p **
-    whitespace.many *--
+      p **
+      whitespace.many *--
 
-  def separated[A,B](sep : Parser[A], pb: Parser[B]) : Parser[List[B]] =
+  def separated[A, B](sep: Parser[A], pb: Parser[B]): Parser[List[B]] =
     ((
       pb **
-      sep *--
-    ).many **
-    pb map {case (lb, b) => lb ++ List(b)}) |
-       succeed(List.empty[B]) scope ("Expected separated list of values")
+        sep *--
+      ).many **
+      pb map { case (lb, b) => lb ++ List(b)}) |
+      succeed(List.empty[B]) scope ("Expected separated list of values")
 
-  def ignoreFirst[A,B](p1 : Parser[A], p2 : Parser[B]) : Parser[B] = p1 ** p2 map (_._2)
-  def ignore[A, B, C] (p1 : Parser[(A, B)], p2: Parser[C]) : Parser[(A, C)] = p1 ** p2 map { case ((a, b), c) => (a,c) }
+  def ignoreFirst[A, B](p1: Parser[A], p2: Parser[B]): Parser[B] = p1 ** p2 map (_._2)
 
-  def map[A, B] (p : Parser[A])(f : A => B) : Parser[B] = flatMap(p)(a => succeed(f(a)))
-  def map2[A, B, C] (pa : Parser[A], pb : => Parser[B])(f : (A,B) => C) : Parser[C] =
+  def ignore[A, B, C](p1: Parser[(A, B)], p2: Parser[C]): Parser[(A, C)] = p1 ** p2 map { case ((a, b), c) => (a, c)}
+
+  def map[A, B](p: Parser[A])(f: A => B): Parser[B] = flatMap(p)(a => succeed(f(a)))
+
+  def map2[A, B, C](pa: Parser[A], pb: => Parser[B])(f: (A, B) => C): Parser[C] =
     for {
       a <- pa
       b <- pb
-    } yield f(a,b)
+    } yield f(a, b)
 
-  def flatMap[A, B](p: Parser[A])(f : A => Parser[B]) : Parser[B]
+  def flatMap[A, B](p: Parser[A])(f: A => Parser[B]): Parser[B]
 
-  def slice[A] (p : Parser[A]) : Parser[String]
+  def slice[A](p: Parser[A]): Parser[String]
 
   /* error reporting */
 
-  def debug[A](p : Parser[A])(msg : String) : Parser[A]
+  def debug[A](p: Parser[A])(msg: String): Parser[A]
 
-  def label[A](p : Parser[A])(msg : String) : Parser[A]
-  def scope[A](p : Parser[A])(msg : String) : Parser[A]
+  def label[A](p: Parser[A])(msg: String): Parser[A]
 
-  case class Location(input : String, offset : Int) {
-    lazy val line = input.slice(0, offset+1).count(_ == '\n') + 1
-    lazy val column = input.slice(0,offset+1).lastIndexOf('\n') match {
+  def scope[A](p: Parser[A])(msg: String): Parser[A]
+
+  case class Location(input: String, offset: Int) {
+    lazy val line = input.slice(0, offset + 1).count(_ == '\n') + 1
+    lazy val column = input.slice(0, offset + 1).lastIndexOf('\n') match {
       case -1 => offset + 1
       case lineStart => offset - lineStart
     }
   }
 
   /* Conversions */
-  implicit def toBiParserOps[A,B](a : Parser[(A,B)]) : BiParserOps[A,B] = BiParserOps(a)
-  implicit def fromBiParserOps[A,B](a : BiParserOps[A,B]) : Parser[(A,B)] = a match { case BiParserOps(p) => p }
+  implicit def toBiParserOps[A, B](a: Parser[(A, B)]): BiParserOps[A, B] = BiParserOps(a)
 
-  implicit def toParserOps[A](a : Parser[A]) : ParserOps[A] = ParserOps(a)
-  implicit def fromParserOps[A](a : ParserOps[A]) : Parser[A] = a match { case ParserOps(p) => p }
+  implicit def fromBiParserOps[A, B](a: BiParserOps[A, B]): Parser[(A, B)] = a match {
+    case BiParserOps(p) => p
+  }
 
-  implicit def toParser[A](a : A)(implicit aToString : A => String) = string(aToString(a))
-  implicit def toParser(r : Regex) = regex(r)
+  implicit def toParserOps[A](a: Parser[A]): ParserOps[A] = ParserOps(a)
 
-  case class BiParserOps[A,B](p : Parser[(A,B)]) {
+  implicit def fromParserOps[A](a: ParserOps[A]): Parser[A] = a match {
+    case ParserOps(p) => p
+  }
+
+  implicit def toParser[A](a: A)(implicit aToString: A => String) = string(aToString(a))
+
+  implicit def toParser(r: Regex) = regex(r)
+
+  case class BiParserOps[A, B](p: Parser[(A, B)]) {
     def *-- : Parser[A] = p.map(_._1)
-    def *--[C] (p2 : Parser[C]) : Parser[(A,C)] = p ** p2 map {case ((a,b),c) => (a,c) }
+
+    def *--[C](p2: Parser[C]): Parser[(A, C)] = p ** p2 map { case ((a, b), c) => (a, c)}
   }
 
   /* Operators */
   case class ParserOps[A](p: Parser[A]) {
-    def |[B >: A](p2: => Parser[B]) : Parser[B] = self.or(p,p2)
-    def **[B](p2: => Parser[B]) : Parser[(A,B)] = self.product(p,p2)
-    def *--[B](p2: Parser[B]) : Parser[B] = self.ignoreFirst(p,p2)
-    def as[B](b : B) : Parser[B] = self.as(p, b)
-    def slice : Parser[String] = self.slice(p)
-    def trim : Parser[A] = self.trim(p)
-    def map[B](f : A => B) = self.map(p)(f)
-    def map2[B, C] (pb : => Parser[B])(f : (A,B) => C) : Parser[C] = self.map2(p, pb)(f)
-    def many : Parser[List[A]] = self.many(p)
-    def many1 : Parser[List[A]] = self.many1(p)
-    def flatMap[B](f : A => Parser[B]) : Parser[B] = self.flatMap(p)(f)
-    def label(msg : String) : Parser[A] = self.label(p)(msg)
-    def debug(msg : String) : Parser[A] = self.debug(p)(msg)
-    def scope(msg : String) : Parser[A] = self.scope(p)(msg)
+    def |[B >: A](p2: => Parser[B]): Parser[B] = self.or(p, p2)
+
+    def **[B](p2: => Parser[B]): Parser[(A, B)] = self.product(p, p2)
+
+    def *--[B](p2: Parser[B]): Parser[B] = self.ignoreFirst(p, p2)
+
+    def as[B](b: B): Parser[B] = self.as(p, b)
+
+    def slice: Parser[String] = self.slice(p)
+
+    def trim: Parser[A] = self.trim(p)
+
+    def map[B](f: A => B) = self.map(p)(f)
+
+    def map2[B, C](pb: => Parser[B])(f: (A, B) => C): Parser[C] = self.map2(p, pb)(f)
+
+    def many: Parser[List[A]] = self.many(p)
+
+    def many1: Parser[List[A]] = self.many1(p)
+
+    def flatMap[B](f: A => Parser[B]): Parser[B] = self.flatMap(p)(f)
+
+    def label(msg: String): Parser[A] = self.label(p)(msg)
+
+    def debug(msg: String): Parser[A] = self.debug(p)(msg)
+
+    def scope(msg: String): Parser[A] = self.scope(p)(msg)
   }
 
   object Laws {
 
-    def equal[A](p1: Parser[A], p2 : Parser[A])(in : SGen[String]) : Prop =
+    def equal[A](p1: Parser[A], p2: Parser[A])(in: SGen[String]): Prop =
       Prop.forAll(in)(s => run(p1)(s) == run(p2)(s))
 
-    def mapLaw[A](p : Parser[A])(in: SGen[String]) : Prop =
+    def mapLaw[A](p: Parser[A])(in: SGen[String]): Prop =
       equal(p.map(a => a), p)(in)
 
-    def testValidJson : Prop = {
-      val p = Parsers.jsonParser(self)
+    def testValidJsonString (p: Parser[JSON]) : Prop = {
+      Prop.forAll(SGen.string.map("'" + _ + "'"))(input => {
+        run(p)(input) match {
+          case Right(JSON.JSString(input)) => true
+          case Right(_) => throw new Exception("Expected JSString")
+          case Left(pe) => throw new Exception(pe.stack.toString())
+        }
+      })
+    }
+
+    def testValidJson (p: Parser[JSON]): Prop = {
       val testJson = "  { 'Name' = 'Marcin', 'Age'=15, Items=[11,2,3] } "
       Prop.check({
         val result = run(p)(testJson)
         result match {
           case Right(JSON.JSObject(map)) =>
             map.get("Name").get.asInstanceOf[JSON.JSString].get == "Marcin" &&
-            map.get("Age").get.asInstanceOf[JSON.JSNumber].get == 15 &&
-            map.get("Items").get.asInstanceOf[JSON.JSArray].get.head.asInstanceOf[JSON.JSNumber].get == 11
+              map.get("Age").get.asInstanceOf[JSON.JSNumber].get == 15 &&
+              map.get("Items").get.asInstanceOf[JSON.JSArray].get.head.asInstanceOf[JSON.JSNumber].get == 11
           case Right(_) => throw new Exception("Expected JSObject")
           case Left(pe) => throw new Exception(pe.stack.toString())
         }
       })
     }
   }
-
 }
 
 trait JSON
@@ -158,46 +199,62 @@ object JSON {
 }
 
 object Parsers {
-  def jsonParser[Parser[+_]](P : Parsers[Parser]) : Parser[JSON] = {
+  import JSON._
+
+  def jsnull [Parser[+_]](P : Parsers[Parser]) : Parser[JSNull.type] = {
     import P._
-    import JSON._
+    string("null").as(JSNull)
+  }
 
-    val jsnull : Parser[JSON] = string("null").as(JSNull)
-    val jsnumber : Parser[JSNumber] = double.map(JSNumber)
+  def jsnumber [Parser[+_]](P : Parsers[Parser]) : Parser[JSNumber] = {
+    import P._
+    double.map(JSNumber)
+  }
 
-    val jsstring : Parser[JSString] = for {
+  def jsstring [Parser[+_]](P : Parsers[Parser]) : Parser[JSString] = {
+    import P._
+    for {
       p <- char('\'') | char('"')
-      str <- regex(("[^"+ p + "]").r)
+      str <- exceptChar(p).many.slice
       _ <- char(p)
     } yield JSString(str)
+  }
 
+  def jsbool [Parser[+_]](P : Parsers[Parser]) : Parser[JSBool] = {
+    import P._
+    string("false").as(JSFalse) |
+    string("true").as(JSTrue)
+  }
 
-    val jsbool : Parser[JSBool] =
-      string("false").as(JSFalse) |
-      string("true").as(JSTrue)
+  def jsarray [Parser[+_]](P : Parsers[Parser]): Parser[JSArray] = {
+    import P._
+    (
+      char('[') *--
+      separated(char(','), jsonParser(P)).trim **
+      char(']') *--
+    ) map (_.toIndexedSeq) map (JSArray) scope ("JSON Array Expected")
+  }
 
-    val jsarray : Parser[JSArray]=
-      (
-        char('[') *--
-        separated(char(','), jsonParser(P)).trim **
-        char(']') *--
-      ) map (_.toIndexedSeq) map (JSArray) scope ("JSON Array Expected")
+  def jsobject [Parser[+_]](P : Parsers[Parser]): Parser[JSObject] = {
+    import P._
 
-    val jsobject: Parser[JSObject] =
-      (
-        char('{') *--
+    (
+      char('{') *--
         separated(
           char(','),
           (
-            jsstring **
+            jsstring(P) **
             char('=').trim *--
             jsonParser(P)
-          ).trim
+            ).trim
         ).trim **
         char('}') *--
       ) map (_.map(p => (p._1.get, p._2)).toMap) map (JSObject) scope ("JSON Object Expected")
+  }
 
-    (jsnull | jsnumber | jsbool | jsstring | jsarray | jsobject).trim scope ("JSON expected")
+  def jsonParser[Parser[+_]](P : Parsers[Parser]) : Parser[JSON] = {
+    import P._
+    (jsnull(P) | jsnumber(P) | jsbool(P) | jsstring(P) | jsarray(P) | jsobject(P)).trim scope ("JSON expected")
   }
 }
 
@@ -213,26 +270,25 @@ object MyParsers extends Parsers[MyParser] {
       })
   }
 
-  override def string(s: String): MyParser[String] =
-    MyParser(input => {
+  override def string(s: String): MyParser[String] = MyParser(input => {
     if (input.startsWith(s))
       Right(s, input.slice(s.length, input.length))
     else
       Left(ParseError(List(("Expected " + s, Location(input, 0)))))
-  }).label("Expecting " + s)
+  }).label("Expected " + s)
 
-  override def scope[A](p: MyParser[A])(msg: String): MyParser[A] = p.debug(msg)
+  override def scope[A](p: MyParser[A])(msg: String): MyParser[A] = p
 
   override def regex(r: Regex): MyParser[String] = MyParser(input =>
     r.findPrefixMatchOf(input).map(m => Right(m.matched, input.slice(m.end, input.length)))
       .getOrElse(Left(ParseError(List(("Expected " + r, Location(input, 0))))))
-  )
+  ) label("Regex " + r)
 
   override def slice[A](p: MyParser[A]): MyParser[String] = MyParser(input => {
     p.parse(input).right.map { case (_, rest) => (input.slice(0, input.length - rest.length), rest) }
   })
 
-  override def label[A](p: MyParser[A])(msg: String): MyParser[A] = p.debug(msg)
+  override def label[A](p: MyParser[A])(msg: String): MyParser[A] = p
 
   override def attempt[A](p: MyParser[A]): MyParser[A] = p
 
@@ -248,7 +304,19 @@ object MyParsers extends Parsers[MyParser] {
 
   override def succeed[A](a: A): MyParser[A] = MyParser(input => Right(a, input))
 
-  override def debug[A](p: MyParser[A])(msg: String): MyParser[A] = MyParser(input =>
-  {
-    Console.println(msg); p.parse(input)})
+  override def debug[A](p: MyParser[A])(msg: String): MyParser[A] = MyParser(input => {
+    Console.println(msg)
+    p.parse(input)
+  })
+}
+
+object ParserMain {
+  def main(): Unit = {
+    import MyParser._
+
+    val jsonParser = Parsers.jsstring(MyParsers)
+    Prop.run(MyParsers.Laws.mapLaw(jsonParser)(SGen.string))
+    Prop.run(MyParsers.Laws.testValidJsonString(jsonParser))
+    Prop.run(MyParsers.Laws.testValidJson(jsonParser))
+  }
 }
