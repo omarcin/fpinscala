@@ -1,5 +1,7 @@
 package com.oczeretko
 
+import java.util.concurrent.Executors
+
 import com.oczeretko.Prop.{MaxSize, TestCases}
 
 case class SGen[+A](forSize : Int => Gen[A]) {
@@ -12,13 +14,13 @@ case class SGen[+A](forSize : Int => Gen[A]) {
 
   def **[B](s2: SGen[B]): SGen[(A,B)] =
     SGen(size => this.apply(size) ** s2.apply(size))
-
 }
 
 object SGen {
   def listOf[A](g : Gen[A]) : SGen[List[A]] = SGen(size => g.listOfN(size))
   def listOf1[A](g : Gen[A]) : SGen[List[A]] = SGen(size => g.listOfN(if(size==0) 1 else size))
   def unit[A](a : A) : SGen[A] = Gen.unit(a).unsized
+  def string : SGen[String] = SGen(Gen.stringOfLen)
 }
 
 case class Gen[+A](sample: State[RNG, A]) {
@@ -57,9 +59,14 @@ object Gen {
   def boolean : Gen[Boolean] =
     Gen(RNG.nonNegativeLessThan(2).map(_ == 0))
 
-
   def union[A] (g1 : Gen[A], g2 : Gen[A]) : Gen[A] =
     boolean.flatMap(if (_) g1 else g2)
+
+  def char : Gen[Char] =
+    choose('A'.toInt, 'Z'.toInt).map(_.toChar)
+
+  def stringOfLen(len : Int) : Gen[String] =
+    char.listOfN(len).map(cs => new String(cs.toArray))
 
   def weighted[A] (g1 : (Gen[A], Double), g2 : (Gen[A], Double)) : Gen[A] = {
     val t = g1._2.abs / (g1._2.abs + g2._2.abs)
@@ -174,3 +181,26 @@ object Prop {
       .getOrElse(Stream.empty[A])
 }
 
+object PropMain {
+  def main() : Unit = {
+    val gi = Gen.choose(-100, Int.MaxValue / 2)
+    val sg = SGen.listOf1(gi)
+
+    val p = Prop.forAll(sg)(list => list.forall(_ <= list.max))
+    Prop.run(p)
+
+
+    val sp = Prop.forAll(sg)(list => list.sorted.foldLeft((Int.MinValue, true)) { case ((prev, res), item) => (item, res && prev <= item)}._2)
+    Prop.run(sp)
+
+    val es = Executors.newCachedThreadPool()
+    val parallelProp = Prop.check(Par.map(Par.unit(1))(_ + 1).apply(es).get == Par.unit(2).apply(es).get)
+
+    Prop.run(parallelProp)
+
+    val genFun = Gen.funInt[Int].unsized.map(f => f andThen (i => i < Int.MaxValue / 2))
+    val takeProp = Prop.forAll(genFun ** sg) { case (f, l) => l.takeWhile(f).forall(f) && l == l.takeWhile(f) ++ l.dropWhile(f)}
+
+    Prop.run(takeProp)
+  }
+}
